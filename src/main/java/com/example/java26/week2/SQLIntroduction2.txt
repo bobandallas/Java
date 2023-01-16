@@ -1,0 +1,215 @@
+transaction(保证数据的一致性)
+    Atomicity(多个操作 要么全部一起执行，要么失败一起rollback)
+        begin
+            insert
+            update
+
+        save point ----
+            delete
+            ------
+        rollback
+            insert
+            delete
+        commit
+    Consistency(数据库从一个valid stage 到 另一个 valid stage，commit后不会数据莫名消失)
+    Isolation level(不同的level性能有所差距，比如high level 的isolation锁多)
+        user1           begin       insert                               commit
+timeline--------------------------------------------------------------------------->
+        user2            begin                         select(不同的isolation level会决定是否能选取到user1刚刚insert的数据)
+    Durability
+
+---------------------------------------------------------------------------
+no lock select  / plain select statement
+
+exclusive lock : 当执行以下操作默认上exclusive lock : update / insert / delete / select..where id >= 3 for update(关键字主动加锁)
+                 commit之后自动释放，或者timeout
+
+share lock : select ... for share (读锁，在锁期间ex锁不可以访问)
+
+gap lock
+
+---------------------------------------------------------------------------
+Isolation level
+-- Oracle : read committed(default), serializable, read only
+MySQL : read uncommitted, read committed, repeatable read(default), serializable
+
+
+read uncommitted (dirty read, non-repeatable read, phantom read)
+        user1        begin      insert / update / delete 100rows              commit
+timeline--------------------------------------------------------------------------->
+        user2        begin                                      select 100rows
+
+read committed (non-repeatable read(update, delete), phantom read(insert))
+        user1        begin      insert / update / delete 100rows                commit
+timeline-------------------------------------------------------------------------------------------------------->
+        user2        begin                                      select 0 changes            select all changes
+
+repeatable read (phantom read(insert))         ex +  gap lock(next key lock)
+        user1        begin               update / delete 100rows                commit
+timeline-------------------------------------------------------------------------------------------------------->
+        user2        begin                                      select 0 changes            select 0 changes
+
+serializable + select(share lock)
+        user1        begin            insert / update / delete 100rows                commit
+timeline-------------------------------------------------------------------------------------------------------->
+        user2        begin                                           select 0 changes            select 0 changes
+
+
+
+lost update 更新不一致
+Employee
+id, name, salary
+ 1  'tom'   100
+
+
+            user1                       user2
+          select salary                select salary
+           pre = 100                      pre = 100
+         update set pre + 1            update set pre + 2
+
+Optimistic lock 常见的解决方案
+Employee
+id, name, salary, version / timestamp
+ 1  'tom'   100 ,   1   / ..
+
+            user1                       user2
+          select salary                select salary
+           pre = 100                      pre = 100
+           version = 1                    version = 1
+         update set pre + 1            update set pre + 2,
+            version++                       version++
+         where version = 1              where version = 1
+
+
+//原理逻辑：
+    user1 & user2只有一个人会成功（拿锁），另一个失败抛出exception然后进行retry
+---------------------------------------------------------------------------
+MVCC (multi-version concurrency control) => 如何实现isolation level
+
+//默认生成三个column
+row_id 直接指向address很快
+tx_id transaction id 递增的unique id 可以用来判断tx先后
+rollback-pointer 把两个roll连在一起， 平时删除或更改，并不会删除原有的，而是屏蔽原有的，然后rollback pointer指向新的
+
+Student
+id, name        row_id,  tx_id, rollback-pointer
+ 1  'Jerry'       XXASDX    2          |
+                                       |
+                                       \/
+                                       1  'tom'       XXASDX    1         null
+
+
+select => read_view list[current committed tx_id] => [1]
+        运行select会拿到最新的read_view list；
+        read commited会拿最新的，repeatable read 第一次select拿到read review list,之后的都会共享同一个
+        (check tx_id，如果超过了之前select read review list记录的，就读rollback的)；
+---------------------------------------------------------------------------
+non-cluster index
+B + tree index
+
+                    []
+                  /     \
+               []  <--> []        //相比于B tree多了 pointer在node之间移动
+               rowid
+                |                           rowid, name..
+                |------------------------->  xx
+
+B tree
+                   [10]
+                /       \
+            [1, 5]       [10, 15]
+
+
+                        [10,  20]
+                    /       \       \
+            [1, 5]       [10, 15]    [20, 50]
+
+
+                       [10,  20,   70]
+                    /       \       \       \
+            [1, 5]       [10, 15]    [20, 50]  [70, 100]
+
+
+                                [70]
+                              /         \
+                       [10,  20]        [70,   101]
+                    /       \           /       \       \
+            [1, 5]     [10, 15]    [20, 50]  [70, 100]  [101, 200]
+
+bitmap   优势处理大量重复性数据
+id      state    row_id                 row_id    NJ     NY     VA
+1       NJ                                        1      0      0
+2       NY                                        0      1      0
+3       VA                                        0      0      1
+4       NJ                                        1      0      0
+5       VA                                        0      0      1
+
+NJ  10010
+NY  01000
+VA  00101
+
+NJ or VA
+
+----------
+cluster index (index organized table)
+
+                    []
+                  /     \
+               []  <--> []
+               rowid     ..
+               name
+               ..
+               ..
+
+直接把所有的东西放进node里而不是用rowid再去找
+---------------------------------------------------------------------------
+
+full table scan
+index access path
+    1. index unique scan        从root node找到特定的node，然后带着rowid去访问磁盘特定位置的row
+    2. index range scan         B+ leaf node之间扫描(向左向右)
+    3. index full scan          找到第一个node 然后从左向右一个一个查找
+    4. index fast full scan     无序扫描多线程
+不能强制性要求DB用啥
+
+三种不同的底层join会导致性能不一样
+merge join = merge two sorted array
+hash join = [row1, row3][][][][row4][]
+nested loop join = for () {for() } N^2
+
+EXPLAIN PLAN FOR
+select /*+ index(e) */ * from hr.employees e;
+select plan_table_output from table(dbms_xplan.display('plan_table',null,null));
+
+EXPLAIN PLAN FOR
+select * from hr.employees where employee_id = 100;
+select plan_table_output from table(dbms_xplan.display('plan_table',null,null));
+
+EXPLAIN PLAN FOR
+select * from hr.employees where employee_id > 100 and employee_id < 105;
+select plan_table_output from table(dbms_xplan.display('plan_table',null,null));
+
+EXPLAIN PLAN FOR
+select * from hr.employees where employee_id = 100 or employee_id = 101;
+select plan_table_output from table(dbms_xplan.display('plan_table',null,null));
+
+EXPLAIN PLAN FOR
+select *
+from hr.employees e, hr.departments d
+where e.department_id = d.department_id;
+select plan_table_output from table(dbms_xplan.display('plan_table',null,null));
+
+EXPLAIN PLAN FOR
+select *
+from hr.employees e join hr.departments d on e.department_id = d.department_id;
+select plan_table_output from table(dbms_xplan.display('plan_table',null,null));
+
+// hint操作有非常多，可以建议oracle来做 不一定按你说的来，它是根据之前操作statistics统计来的评估
+EXPLAIN PLAN FOR
+select /*+ Leading(e) full(d) use_merge(e d) parallel(10) */ *
+from hr.employees e join hr.departments d on e.department_id = d.department_id;
+select plan_table_output from table(dbms_xplan.display('plan_table',null,null));
+
+next Monday:
+    oracle architecture
+    table design

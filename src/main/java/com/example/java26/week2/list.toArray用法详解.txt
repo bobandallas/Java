@@ -1,0 +1,184 @@
+package com.example.java26.week2;
+
+public class ListToArray用法详解 {
+}
+List.toArray()用法详解
+        天为了把一个ArrayList直接转化为一个String数组，着实费了一番功夫，后来经百度后才搞定，总结如下：
+
+        如果要把一个List直接转化为Object数组，则可以直接使用Object[] o = list.toArray();
+
+        如果要转化为String数组，则有以下两种方式：
+
+        方法一、String[]  arr = new String[list.size];  list.toArray(arr);//此时arr就有了list中的值了
+
+        方法二、String[] arr = (String[])list.toArray(new String[0]);
+
+        下面是更详细的说明:[转自http://hi.baidu.com/happy19840402/blog/item/3b12a610b45353f9c3ce7984.html]
+
+
+
+        List list = new ArrayList();
+
+
+
+        list.add(new Person());
+
+
+
+        list.add(new Person());
+
+
+
+        list.add(new Person());
+
+
+
+        Person[] person = (Person[]) list.toArray();
+
+
+
+        运行程序会抛出异常：java.lang.ClassCastException
+
+
+
+        但运行如下代码：
+
+
+
+        List list = new ArrayList();
+
+
+
+        list.add(new Person());
+
+
+
+        list.add(new Person());
+
+
+
+        list.add(new Person());
+
+
+
+        Person[] person = (Person[]) list.toArray(new Person[0]);
+
+
+
+        程序正确执行，
+
+
+
+        原因，先看ArrayList的两个toArray()方法的源代码：
+
+
+
+public Object[] toArray() {
+
+
+
+        Object[] result = new Object[size];
+
+
+
+        System.arraycopy(elementData, 0, result, 0, size);
+
+
+
+        return result;
+
+
+
+        }
+
+
+
+
+
+
+
+public Object[] toArray(Object a[]) {
+
+
+
+        if (a.length < size)
+
+
+
+        a = (Object[])java.lang.reflect.Array.newInstance(a.getClass().getComponentType(), size);
+
+
+
+        System.arraycopy(elementData, 0, a, 0, size);
+
+
+
+        if (a.length > size)
+
+
+
+        a[size] = null;
+
+
+
+        return a;
+
+
+
+        }
+
+
+
+        可以看出，不带参数的toArray方法，是构造的一个Object数组，然后进行数据拷贝，此时进行转型就会产生ClassCastException而带参数的toArray方法，则是根据参数数组的类型，构造了一个对应类型的，长度跟ArrayList的size一致的空数组，虽然方法本身还是以Object数组的形式返回结果，不过由于构造数组使用的ComponentType跟需要转型的ComponentType一致，就不会产生转型异常。
+
+
+
+        那么，对于不带参数的toArray方法，它有什么特殊意义呢？还是用代码说话：
+
+
+
+        ArrayList list = new ArrayList();
+
+
+
+        list.add(new Person());
+
+
+
+        list.add(new Person());
+
+
+
+        list.add(new Person());
+
+
+
+//这里不需要转型，也不能使用转型
+
+
+
+        Object[] ss = list.toArray();
+
+
+
+//这里可以进行转型，取出原ArrayList里面存放的对象
+
+
+
+        for (int i = 0; i < ss.length; i++)
+
+
+
+        {Person person= (Person) ss[i];
+
+
+
+        System.out.println(person);
+
+
+
+        }
+
+
+
+        是说，如果用toArray，需要自己“手工”“逐个”进行类型转换。

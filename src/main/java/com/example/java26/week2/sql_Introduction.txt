@@ -1,0 +1,208 @@
+Database
+    1. sql + table / constraint (sql 有很多限制， 如过想要json pair可以用 mongodb)
+    2. transaction
+    3. index
+    4. pl/sql 把逻辑放到database上面，而不是后端和sql进行没必要的消耗。
+    5. security (authentication, authorization), encrypte at rest (数据存在DB中也要加密，比如硬盘丢失的情况)；
+
+
+DB types: (Sequential IO, Random IO)
+    Sequential IO : 所有的修改直接append到当前file后面
+    1. RDBMS : Oracle, MySQL, PostgreSQL, SQLserver, SQLite, Derby, h2
+    2. NoSQL : Mongodb, Cassandra, DynamicDB(aws)
+    3. Objects storage: S3(是不是数据库？见仁见智，没有DB的特性，但是是个storage也有index，但是index无法用户用，数据都是immutable，
+                            最好往里面存Object，存取有上限)
+    4. File System: EFS
+    5. cache : Redis
+
+
+select *
+from hr.empLoyees
+
+
+select first_name as fn, last_name as ln
+from hr.employees e
+
+select e.first_name as fn, e.last_name as ln
+from hr.employees e
+
+
+--aggregation function : max, count, min, sum, avg
+
+select max(salary) as max
+from hr.employees
+
+// ！！！ count 时候，会忽略当前column为null的value
+select count(COMMISSION_PCT) as count
+from hr.employees
+
+// 错误代码， max的salary并不为一， oracle并不知道要给你哪个first_name所以报错
+// select max(salary) as max, first_name
+// from hr.employees
+
+
+
+
+--subquery
+select *
+from (select * from hr.employees)
+=
+select *
+from hr.empLoyees
+
+
+
+
+--where
+select salary
+from hr.employees
+where salary > 10000 and salary < 20000
+
+
+
+--retrieve 2nd highest salary from emp table
+select max(salary)
+from hr.employees
+where salary < (select max(salary) as max from hr.employees)
+
+
+
+
+--retrieve kth highest salary from emp table
+select *
+from (select e1.*, dense_rank() over (order by salary desc) as rank
+     from hr.employees e1 ) t
+where t.rank = 4
+
+select e1.*
+from hr.employees e1
+where 3 = (select count(distinct(e2.salary)) from hr.employees e2 where e1.salary < e2.salary)
+
+
+
+--group by
+select department_id, count(*)
+from hr.employees
+where department_id is not null
+group by department_id
+having count(*) > 1
+order by department_id
+
+
+emp_id,  dept_id
+ 1          A
+ 2          A
+ 3          A
+ 4          A
+ 5          null
+
+ dept_id, dept_info
+    A       xx
+select count(*)
+from (
+select * from hr.employees e left join hr.departments d on e.department_id = d.department_id
+intersect // 类似的还有union，minus
+select * from hr.employees e join hr.departments d on e.department_id = d.department_id
+)
+
+
+-- inner join
+-- outer join: left join / right join / full join(左右都保留)
+
+select count(*)
+from    (select *
+        from hr.employees e join hr.departments d on e.department_id = d.department_id)
+
+select *
+from    (select e.*
+        from hr.employees e full join hr.departments d on e.department_id = d.department_id) t
+
+
+
+-- cross join
+A       B
+1       3
+2       4
+        5
+
+1   3
+1   4
+1   5
+2   3
+2   4
+2   5
+
+//cross join 加 where改成 inner join了。 cross，outer，inner只是我们程序员来区分的，都换转换为底层的hash join，nest join....
+select count(*)
+from    (select *
+        from hr.employees e, hr.departments d
+        where e.department_id = d.department_id)
+
+
+
+Qestions：
+
+--count employee number in each dept , display all dept names  + count
+select d.department_id, d.department_name, count(employee_id) //这里要count employee_id， 因为很多dept是没有employee的
+from hr.employees e right join hr.departments d on e.department_id = d.department_id
+group by d.department_id, d.department_name
+
+
+
+
+--get 3rd highest salary in each department , , display all dept names  + salary
+select *
+from (select e.salary, d.department_id, d.department_name, dense_rank() over (partition by d.department_id order by salary desc) as rank
+      from hr.employees e right join hr.departments d on e.department_id = d.department_id
+     ) t
+where t.rank = 3
+----------------------------------------
+
+
+
+select (case
+            when e.salary is null
+            then 0
+        end
+        ),
+       d.department_id, d.department_name, dense_rank() over (partition by d.department_id order by salary desc) as rank
+from hr.employees e right join hr.departments d on e.department_id = d.department_id
+where e.employee_id is null
+
+
+----------------------------------------
+create view xx as select * from hr.employees
+
+view 就类似于subquery
+select * from xx
+
+--material view 才会真的存到cache里面，而view只是单纯的一个指向
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
