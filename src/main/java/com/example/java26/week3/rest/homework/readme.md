@@ -98,7 +98,7 @@ success
 
 
 
-# 1. Teacher Build with Hibernate
+# 2. Teacher Build with Hibernate
 
 ### Get All
 #### Request Url : /teacher
